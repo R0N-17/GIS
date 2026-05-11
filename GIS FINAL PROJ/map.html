@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barangay Cangumbang — Interactive GIS Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --green: #a0522d;
+    --green-light: #c1692a;
+    --green-pale: #f5e6d8;
+    --green-dark: #6b3318;
+    --amber: #e9c46a;
+    --sidebar-bg: #fdf6f0;
+    --header-bg: #6b3318;
+    --text: #2e1a0e;
+    --text-muted: #7a5a3a;
+    --border: #e3cdb8;
+    --white: #ffffff;
+    --toolbar-h: 52px;
+    --infobanner-h: 44px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Barlow', sans-serif;
+    background: #eef3ef;
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--header-bg);
+    color: white;
+    padding: 0 1.25rem;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+  .header-brand { display: flex; align-items: center; gap: 10px; }
+  .header-seal {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--amber);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; overflow: hidden;
+  }
+  .header-seal img { width: 100%; height: 100%; object-fit: cover; }
+  .header-title h1 { font-family: 'Barlow Condensed', sans-serif; font-size: 17px; font-weight: 700; letter-spacing: 0.03em; }
+  .header-title p { font-size: 10px; opacity: 0.65; letter-spacing: 0.05em; text-transform: uppercase; }
+
+  /* ── STATS BANNER ── */
+  .stats-banner {
+    background: var(--green-dark);
+    border-bottom: 1px solid #7e3d1a;
+    height: var(--infobanner-h);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+    overflow-x: auto;
+    z-index: 900;
+  }
+  .stats-banner::-webkit-scrollbar { display: none; }
+  .stat-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 20px;
+    border-right: 1px solid rgba(255,255,255,0.1);
+    white-space: nowrap;
+    height: 100%;
+  }
+  .stat-pill strong { font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 700; color: var(--amber); }
+  .stat-pill span { font-size: 11px; color: rgba(255,255,255,0.65); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* ── TOOLBAR (layers only, no search) ── */
+  .toolbar {
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--border);
+    height: var(--toolbar-h);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+    z-index: 800;
+    overflow-x: auto;
+    padding: 0 12px;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+
+  /* Layers horizontal */
+  .tb-layers {
+    display: flex; align-items: center; gap: 0;
+    overflow-x: auto; flex: 1;
+  }
+  .tb-layers::-webkit-scrollbar { display: none; }
+  .tb-layers-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--green-dark);
+    white-space: nowrap; padding-right: 10px; flex-shrink: 0;
+  }
+  .layer-chip {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 11px 4px 8px;
+    margin-right: 4px;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer; user-select: none;
+    background: white;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.18s;
+    flex-shrink: 0;
+  }
+  .layer-chip:hover { border-color: var(--green-light); }
+  .layer-chip.active { background: var(--green-pale); border-color: var(--green-light); }
+  .layer-chip input[type=checkbox] { display: none; }
+  .chip-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .chip-count {
+    font-size: 10px; color: var(--text-muted);
+    background: rgba(0,0,0,0.07); padding: 1px 5px;
+    border-radius: 8px; margin-left: 2px;
+  }
+
+  /* Toggle All btn */
+  .tb-toggle-all {
+    flex-shrink: 0; padding: 5px 12px;
+    border: 1.5px solid var(--green-light);
+    border-radius: 20px; background: none;
+    font-size: 12px; font-family: 'Barlow', sans-serif;
+    color: var(--green-light); cursor: pointer;
+    margin-right: 8px; white-space: nowrap;
+    transition: all 0.18s;
+  }
+  .tb-toggle-all:hover { background: var(--green-pale); }
+
+  /* About btn */
+  .tb-about {
+    flex-shrink: 0; padding: 5px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 20px; background: none;
+    font-size: 12px; font-family: 'Barlow', sans-serif;
+    color: var(--text-muted); cursor: pointer;
+    margin-left: 6px; white-space: nowrap;
+    transition: all 0.18s;
+  }
+  .tb-about:hover { background: var(--green-pale); color: var(--text); }
+
+  /* ── MAP ── */
+  #map { flex: 1; z-index: 1; }
+
+  /* ── FLOATING SEARCH BAR ── */
+  .floating-search {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 600;
+    width: min(480px, calc(100vw - 100px));
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    filter: drop-shadow(0 4px 18px rgba(107,51,24,0.22));
+  }
+
+  .floating-search-bar {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-radius: 28px;
+    border: 1.5px solid var(--border);
+    padding: 0 6px 0 18px;
+    height: 48px;
+    gap: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .floating-search-bar:focus-within {
+    border-color: var(--green-light);
+    box-shadow: 0 0 0 3px rgba(193,105,42,0.13);
+    border-radius: 28px 28px 0 0;
+  }
+  .floating-search-bar:focus-within + .floating-search-dropdown {
+    /* shown via JS */
+  }
+
+  .search-icon {
+    color: var(--text-muted);
+    font-size: 17px;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+
+  .floating-search-bar input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    font-family: 'Barlow', sans-serif;
+    color: var(--text);
+    background: transparent;
+    padding: 0;
+  }
+  .floating-search-bar input::placeholder { color: #b09a84; }
+
+  .search-clear-btn {
+    background: #f0ece8;
+    border: none;
+    border-radius: 50%;
+    width: 26px; height: 26px;
+    display: none;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .search-clear-btn:hover { background: #e3cdb8; }
+  .search-clear-btn.visible { display: flex; }
+
+  .search-go-btn {
+    background: var(--green);
+    border: none;
+    border-radius: 22px;
+    height: 36px;
+    padding: 0 16px;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Barlow', sans-serif;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.18s;
+  }
+  .search-go-btn:hover { background: var(--green-dark); }
+
+  /* Dropdown */
+  .floating-search-dropdown {
+    background: white;
+    border: 1.5px solid var(--green-light);
+    border-top: none;
+    border-radius: 0 0 16px 16px;
+    overflow: hidden;
+    display: none;
+    max-height: 240px;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(107,51,24,0.14);
+  }
+  .floating-search-dropdown.open { display: block; }
+  .floating-search-dropdown::-webkit-scrollbar { width: 4px; }
+  .floating-search-dropdown::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .search-result-item {
+    padding: 9px 16px; cursor: pointer;
+    border-bottom: 1px solid #f5ede6; font-size: 13px;
+    display: flex; align-items: center; gap: 10px; transition: background 0.15s;
+  }
+  .search-result-item:hover { background: var(--green-pale); }
+  .search-result-item:last-child { border-bottom: none; }
+  .sri-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .sri-text p { font-weight: 500; color: var(--text); line-height: 1.2; font-size: 13px; }
+  .sri-text small { color: var(--text-muted); font-size: 11px; }
+  .no-results { padding: 14px 16px; font-size: 12.5px; color: var(--text-muted); text-align: center; }
+
+  /* ── POPUP ── */
+  .leaflet-popup-content-wrapper {
+    border-radius: 12px !important; padding: 0 !important;
+    overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.18) !important;
+    border: none !important;
+  }
+  .leaflet-popup-content { margin: 0 !important; width: 260px !important; }
+  .leaflet-popup-tip-container { display: none; }
+  .popup-body { padding: 0; }
+  .popup-img {
+    width: 100%; height: 110px;
+    background: linear-gradient(135deg, var(--green-pale), #b7e4c7);
+    display: flex; align-items: center; justify-content: center; font-size: 36px;
+  }
+  .popup-img img { width: 100%; height: 110px; object-fit: cover; display: block; }
+  .popup-content { padding: 12px 14px; }
+  .popup-tag {
+    display: inline-block; padding: 2px 9px;
+    border-radius: 20px; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .popup-content h3 { font-family: 'Barlow Condensed', sans-serif; font-size: 17px; font-weight: 700; color: var(--green-dark); margin-bottom: 4px; line-height: 1.2; }
+  .popup-content p { font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+  .popup-close-btn {
+    display: block; width: calc(100% - 28px); margin: 10px 14px 12px;
+    padding: 7px; background: var(--green);
+    color: white; text-align: center; font-size: 12px; font-weight: 600;
+    border: none; border-radius: 8px; cursor: pointer;
+    font-family: 'Barlow', sans-serif; letter-spacing: 0.03em;
+    transition: background 0.2s;
+  }
+  .popup-close-btn:hover { background: var(--green-dark); }
+
+  /* ── FOOTER ── */
+  footer {
+    background: var(--green-dark); color: rgba(255,255,255,0.55);
+    font-size: 11px; padding: 5px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0; z-index: 100;
+  }
+
+  /* ── LEGEND PANEL ── */
+  .legend-panel {
+    position: absolute;
+    bottom: 43px; right: 10px;
+    background: rgba(253,246,240,0.97);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 12px;
+    z-index: 700;
+    font-size: 12px;
+    box-shadow: 0 2px 10px rgba(107,51,24,0.1);
+    min-width: 190px;
+  }
+  .legend-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--green-dark);
+    margin-bottom: 8px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .legend-icon {
+    width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 640px) {
+    .floating-search { width: calc(100vw - 80px); top: 12px; }
+    .stats-banner { height: auto; flex-wrap: wrap; padding: 4px 0; }
+    .stat-pill { padding: 4px 14px; }
+  }
+
+  .leaflet-control-zoom a { font-family: 'Barlow Condensed', sans-serif !important; }
+  .brgy-tooltip { font-family: 'Barlow', sans-serif; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="header-brand">
+    <div class="header-seal">
+      <img src="logo.png" alt="Barangay Seal" onerror="this.style.display='none'">
+    </div>
+    <div class="header-title">
+      <h1>Cangumbang GIS Map</h1>
+      <p>Palo, Leyte &nbsp;·&nbsp; Eastern Visayas</p>
+    </div>
+  </div>
+</header>
+
+<!-- ── STATS BANNER ── -->
+<div class="stats-banner">
+  <div class="stat-pill">
+    <strong>1,334</strong>
+    <span>Population</span>
+  </div>
+  <div class="stat-pill">
+    <strong>302</strong>
+    <span>Households</span>
+  </div>
+  <div class="stat-pill">
+    <strong>Palo</strong>
+    <span>Municipality</span>
+  </div>
+  <div class="stat-pill">
+    <strong>Region VIII</strong>
+    <span>Eastern Visayas</span>
+  </div>
+  <div class="stat-pill" id="totalMarkersCount">
+    <strong>14</strong>
+    <span>Mapped Sites</span>
+  </div>
+</div>
+
+<!-- ── TOOLBAR (layers only) ── -->
+<div class="toolbar">
+  <div class="tb-layers">
+    <span class="tb-layers-label">🗂 Layers</span>
+    <button class="tb-toggle-all" onclick="toggleAllLayers()">Toggle All</button>
+    <div id="layerChips" style="display:flex;align-items:center;gap:4px;flex-wrap:nowrap;"></div>
+  </div>
+  <button class="tb-about" onclick="showAbout()">ℹ About</button>
+</div>
+
+<!-- ── MAP WRAPPER ── -->
+<div style="position:relative;flex:1;display:flex;flex-direction:column;overflow:hidden;">
+  <div id="map" style="flex:1;z-index:1;"></div>
+
+  <!-- ── FLOATING SEARCH BAR ── -->
+  <div class="floating-search" id="floatingSearch">
+    <div class="floating-search-bar" id="searchBarEl">
+      <span class="search-icon">🔍</span>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search buildings or places…"
+        oninput="handleSearch(this.value)"
+        onkeydown="if(event.key==='Enter')handleSearch(this.value,true)"
+        autocomplete="off"
+      >
+      <button class="search-clear-btn" id="clearBtn" onclick="clearSearch()">✕</button>
+      <button class="search-go-btn" onclick="handleSearch(document.getElementById('searchInput').value,true)">
+        Search
+      </button>
+    </div>
+    <div class="floating-search-dropdown" id="searchResults"></div>
+  </div>
+
+  <!-- LEGEND (overlay) -->
+  <div class="legend-panel">
+    <div class="legend-title">Legend</div>
+    <div id="legendItems"></div>
+  </div>
+</div>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <span>Barangay Cangumbang, Palo, Leyte · GIS Mapping Project Salceda 2026</span>
+  <span>© OpenStreetMap contributors</span>
+</footer>
+
+<script>
+// ── DATA ──
+const CATEGORIES = [
+  { id: "gov",    label: "Government",      color: "#a0522d", emoji: "🏛" },
+  { id: "edu",    label: "Education",       color: "#1a6faf", emoji: "🏫" },
+  { id: "health", label: "Health",          color: "#c1121f", emoji: "🏥" },
+  { id: "relig",  label: "Religious",       color: "#6b3fa0", emoji: "⛪" },
+  { id: "infra",  label: "Infrastructure",  color: "#e07b2a", emoji: "🏗" },
+  { id: "evac",   label: "Evacuation",      color: "#168aad", emoji: "🚨" },
+  { id: "comm",   label: "Community",       color: "#c8a84b", emoji: "🤝" },
+];
+
+const LOCATIONS = [
+  { id:1,  cat:"gov",    name:"Barangay Hall of Cangumbang",        desc:"The seat of local governance for Barangay Cangumbang. Houses the Barangay Council, Punong Barangay office, and serves as the administrative center for all official barangay transactions and community services.", lat:11.1324,   lng:124.9816,  image:"brgyhall.png" },
+  { id:2,  cat:"relig",  name:"Cangumbang Chapel",                  desc:"The main chapel serving the spiritual needs of Barangay Cangumbang residents. A center for religious celebrations, community gatherings, and Catholic rites including baptisms, weddings, and fiestas.",           lat:11.132133, lng:124.981423,image:"cangumbangchapel.png" },
+  { id:3,  cat:"edu",    name:"Cangumbang Elementary School",        desc:"The primary educational institution within the barangay serving children in Grades 1–6. Provides basic education under the Department of Education (DepEd), Division of Leyte.",                                  lat:11.132510, lng:124.982380,image:"cangumbangEs.png" },
+  { id:4,  cat:"health", name:"Barangay Health Center",             desc:"Provides primary healthcare services including maternal and child care, immunization, medical consultations, and distribution of medicines. Staffed by a Barangay Health Worker and rural health midwife.",        lat:11.13236,  lng:124.98142, image:"cangumbang basketball court.png" },
+  { id:5,  cat:"evac",   name:"Evacuation Center (Sitio Hibacaan)", desc:"Designated evacuation site for residents of Sitio Hibacaan during typhoons, floods, and other natural disasters. Managed by the Barangay Disaster Risk Reduction and Management Committee (BDRRMC).",           lat:11.13173,  lng:124.97917, image:"cangumbangcommunitycenter.png" },
+  { id:6,  cat:"infra",  name:"Cangumbang Road Junction",           desc:"Main road junction connecting Barangay Cangumbang to the national highway and neighboring barangays of Palo. Primary entry and exit point for vehicles and commuters.",                                          lat:11.13478,  lng:124.98288, image:"" },
+  { id:7,  cat:"comm",   name:"Barangay Basketball Court",          desc:"The main community sports and recreational facility. Used for barangay basketball leagues, community events, programs, and Sangguniang Kabataan (SK) activities.",                                                 lat:11.13228,  lng:124.98152, image:"cangumbang basketball court.png" },
+  { id:8,  cat:"gov",    name:"Barangay Tanod Outpost",             desc:"Outpost of the Barangay Tanod (peacekeeping officers) unit. Ensures peace and order, monitors entry/exit points, and assists in disaster response and community security operations.",                            lat:11.13240,  lng:124.98164, image:"brgyhall.png" },
+  { id:9,  cat:"comm",   name:"Community Multi-Purpose Hall",       desc:"A multi-purpose covered facility used for barangay assemblies, livelihood trainings, relief distribution, community programs, and cultural events. Available for rent by residents for private functions.",        lat:11.13239,  lng:124.98162, image:"brgyhall.png" },
+  { id:11, cat:"edu",    name:"Day Care Center",                    desc:"Early childhood education facility supervised by the Barangay Council for the Protection of Children (BCPC). Provides care and development programs for children aged 3–5 years old.",                            lat:11.13248,  lng:124.98153, image:"Daycare.png" },
+  { id:12, cat:"evac",   name:"Evacuation Center (Cangumbang)",    desc:"Secondary evacuation facility for Brgy. Cangumbang residents. Equipped with emergency supplies and managed in coordination with the Municipal DRRMO of Palo.",                                                    lat:11.13245,  lng:124.98219, image:"cangumbangEs.png" },
+  { id:13, cat:"infra",  name:"Cangumbang Steel Bridge",            desc:"A local steel bridge in Barangay Cangumbang that provides access for residents, vehicles, and nearby agricultural areas.",                                                                                         lat:11.13089,  lng:124.98087, image:"cangumbang steel bridge.png" },
+  { id:14, cat:"relig",  name:"Sitio Hibacaan Chapel",              desc:"The main chapel serving the spiritual needs of Sitio Hibacaan residents. A center for religious celebrations, community gatherings, and important Catholic Catholic rites.",                                        lat:11.13244,  lng:124.97762, image:"hibacaan chapel.png" },
+];
+
+// ── MAP INIT ──
+const map = L.map('map', { zoomControl: false }).setView([11.1317, 124.9802], 16);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org">OpenStreetMap</a>',
+  maxZoom: 19
+}).addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+L.control.scale({ position: 'bottomright', imperial: false }).addTo(map);
+
+// Boundary
+L.polygon([
+  [11.1290, 124.9770],[11.1290, 124.9840],
+  [11.1350, 124.9840],[11.1350, 124.9770]
+], {
+  color: '#a0522d', weight: 2.5, fill: true,
+  fillColor: '#f5e6d8', fillOpacity: 0.15, dashArray: '6,4'
+}).addTo(map).bindTooltip('<b>Barangay Cangumbang</b><br>Palo, Leyte',
+  { permanent: false, direction: 'top', className: 'brgy-tooltip' });
+
+// Home button
+const HomeControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd() {
+    const btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    btn.innerHTML = '<a style="font-size:16px;line-height:26px;display:block;width:26px;height:26px;text-align:center;cursor:pointer;background:white;border-radius:4px;" title="Reset view" onclick="map.flyTo([11.1317,124.9802],16)">⌂</a>';
+    return btn;
+  }
+});
+new HomeControl().addTo(map);
+
+// ── LAYER GROUPS ──
+const layerGroups = {};
+CATEGORIES.forEach(cat => { layerGroups[cat.id] = L.layerGroup().addTo(map); });
+
+function getCatInfo(id) { return CATEGORIES.find(c => c.id === id); }
+
+function createMarkerIcon(cat) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:32px;height:32px;background:${cat.color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.28);border:2.5px solid white;"><span style="transform:rotate(45deg);font-size:14px;line-height:1">${cat.emoji}</span></div>`,
+    iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -34]
+  });
+}
+
+function buildPopup(loc) {
+  const cat = getCatInfo(loc.cat);
+  const tagStyle = `background:${cat.color}22;color:${cat.color};`;
+  const imgHtml = loc.image
+    ? `<img src="${loc.image}" alt="${loc.name}" onerror="this.parentElement.innerHTML='<span style=font-size:36px>${cat.emoji}</span>'">`
+    : `<span style="font-size:36px">${cat.emoji}</span>`;
+  return `<div class="popup-body">
+    <div class="popup-img">${imgHtml}</div>
+    <div class="popup-content">
+      <span class="popup-tag" style="${tagStyle}">${cat.label}</span>
+      <h3>${loc.name}</h3>
+      <p>${loc.desc}</p>
+      <button class="popup-close-btn" onclick="map.closePopup()">Close</button>
+    </div>
+  </div>`;
+}
+
+const markers = {};
+LOCATIONS.forEach(loc => {
+  const cat = getCatInfo(loc.cat);
+  const marker = L.marker([loc.lat, loc.lng], { icon: createMarkerIcon(cat) })
+    .bindPopup(buildPopup(loc), { maxWidth: 270 });
+  marker.addTo(layerGroups[loc.cat]);
+  markers[loc.id] = marker;
+});
+
+// ── HORIZONTAL LAYER CHIPS ──
+const chipsContainer = document.getElementById('layerChips');
+const legendItemsEl  = document.getElementById('legendItems');
+
+CATEGORIES.forEach(cat => {
+  const count = LOCATIONS.filter(l => l.cat === cat.id).length;
+
+  const chip = document.createElement('div');
+  chip.className = 'layer-chip active';
+  chip.id = `chip_${cat.id}`;
+  chip.innerHTML = `<span class="chip-dot" style="background:${cat.color}"></span>${cat.label}<span class="chip-count">${count}</span>`;
+  chip.onclick = () => {
+    const isActive = chip.classList.contains('active');
+    if (isActive) { map.removeLayer(layerGroups[cat.id]); chip.classList.remove('active'); }
+    else          { layerGroups[cat.id].addTo(map);        chip.classList.add('active'); }
+  };
+  chipsContainer.appendChild(chip);
+
+  const leg = document.createElement('div');
+  leg.className = 'legend-item';
+  leg.innerHTML = `
+    <div class="legend-icon" style="background:${cat.color}22;border:1.5px solid ${cat.color}">
+      <span>${cat.emoji}</span>
+    </div>
+    <span>${cat.label}</span>`;
+  legendItemsEl.appendChild(leg);
+});
+
+// ── TOGGLE ALL ──
+let allVisible = true;
+function toggleAllLayers() {
+  allVisible = !allVisible;
+  CATEGORIES.forEach(cat => {
+    if (allVisible) { layerGroups[cat.id].addTo(map); document.getElementById(`chip_${cat.id}`).classList.add('active'); }
+    else            { map.removeLayer(layerGroups[cat.id]); document.getElementById(`chip_${cat.id}`).classList.remove('active'); }
+  });
+}
+
+// ── FLOATING SEARCH ──
+function handleSearch(val, jump) {
+  const q = val.trim().toLowerCase();
+  const resultsEl = document.getElementById('searchResults');
+  const clearBtn  = document.getElementById('clearBtn');
+
+  clearBtn.classList.toggle('visible', val.length > 0);
+
+  if (!q) { resultsEl.classList.remove('open'); return; }
+
+  const matches = LOCATIONS.filter(l =>
+    l.name.toLowerCase().includes(q) ||
+    getCatInfo(l.cat).label.toLowerCase().includes(q) ||
+    l.desc.toLowerCase().includes(q)
+  );
+
+  if (!matches.length) {
+    resultsEl.classList.add('open');
+    resultsEl.innerHTML = '<div class="no-results">No locations found.</div>';
+    return;
+  }
+
+  resultsEl.classList.add('open');
+  resultsEl.innerHTML = matches.map(loc => {
+    const cat = getCatInfo(loc.cat);
+    return `<div class="search-result-item" onclick="jumpTo(${loc.id})">
+      <div class="sri-dot" style="background:${cat.color}"></div>
+      <div class="sri-text"><p>${loc.name}</p><small>${cat.label}</small></div>
+    </div>`;
+  }).join('');
+
+  if (jump && matches.length === 1) jumpTo(matches[0].id);
+}
+
+function clearSearch() {
+  const input = document.getElementById('searchInput');
+  input.value = '';
+  document.getElementById('clearBtn').classList.remove('visible');
+  document.getElementById('searchResults').classList.remove('open');
+  input.focus();
+}
+
+function jumpTo(id) {
+  const loc = LOCATIONS.find(l => l.id === id);
+  const chip = document.getElementById(`chip_${loc.cat}`);
+  if (!map.hasLayer(layerGroups[loc.cat])) {
+    layerGroups[loc.cat].addTo(map);
+    chip && chip.classList.add('active');
+  }
+  map.flyTo([loc.lat, loc.lng], 18, { animate: true, duration: 1 });
+  setTimeout(() => markers[id].openPopup(), 1100);
+  document.getElementById('searchResults').classList.remove('open');
+  document.getElementById('searchInput').value = loc.name;
+  document.getElementById('clearBtn').classList.add('visible');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#floatingSearch'))
+    document.getElementById('searchResults').classList.remove('open');
+});
+
+// ── ABOUT ──
+function showAbout() {
+  alert('Barangay Cangumbang GIS Mapping System\n\nDeveloped as part of the Interactive GIS-Based Mapping System project.\nBarangay Cangumbang, Palo, Leyte, Eastern Visayas, Philippines.\n\nBuilt with: QGIS · Leaflet · HTML/CSS/JavaScript\nMap data: OpenStreetMap contributors');
+}
+</script>
+</body>
+</html>
